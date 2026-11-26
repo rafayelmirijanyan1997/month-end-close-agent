@@ -6,13 +6,13 @@ Writes CSV files to data/generated/.
 """
 
 import argparse
+import datetime as dt
+import json
 import random
 from pathlib import Path
+
 import pandas as pd
 from faker import Faker
-import datetime as dt
-
-import json
 
 OUT_DIR = Path("data/generated")
 PERIOD = "2026-10"
@@ -298,6 +298,25 @@ def fix_line(account_id, debit_cents, credit_cents):
     }
 
 
+def transpose_spots(dollars):
+    """Positions where two neighbouring digits differ and swapping them keeps the number valid."""
+    digits = str(dollars)
+    return [
+        i
+        for i in range(len(digits) - 1)
+        if digits[i] != digits[i + 1] and not (i == 0 and digits[1] == "0")
+    ]
+
+
+def transpose_dollars(rng, cents):
+    """Swap two neighbouring digits in the dollar part, e.g. 5,410.25 -> 5,140.25."""
+    dollars, extra_cents = divmod(cents, 100)
+    digits = list(str(dollars))
+    i = rng.choice(transpose_spots(dollars))
+    digits[i], digits[i + 1] = digits[i + 1], digits[i]
+    return int("".join(digits)) * 100 + extra_cents
+
+
 class Planter:
     """Plants known errors into correct books and records each one for the answer key."""
 
@@ -332,6 +351,48 @@ class Planter:
         chosen = self.rng.sample(candidates, ERRORS_PER_TYPE)
         self.used.update(chosen)
         return chosen
+
+    def add_payment(self, date, vendor, cents, memo):
+        """Post a new vendor payment to the ledger and to the bank (it clears this month)."""
+        self.n_new += 1
+        entry_id = f"NEW{self.n_new}"
+        new_lines = pd.DataFrame(
+            [
+                {
+                    "entry_id": entry_id,
+                    "date": date.isoformat(),
+                    "account_id": int(vendor["account_id"]),
+                    "debit_cents": cents,
+                    "credit_cents": 0,
+                    "vendor_id": vendor["vendor_id"],
+                    "memo": memo,
+                },
+                {
+                    "entry_id": entry_id,
+                    "date": date.isoformat(),
+                    "account_id": 1000,
+                    "debit_cents": 0,
+                    "credit_cents": cents,
+                    "vendor_id": vendor["vendor_id"],
+                    "memo": memo,
+                },
+            ]
+        )
+        cleared = add_business_days(date, self.rng.choice([1, 2, 2, 3]))
+        new_bank = pd.DataFrame(
+            [
+                {
+                    "bank_id": "",
+                    "date": cleared.isoformat(),
+                    "amount_cents": -cents,
+                    "description": bank_description(memo),
+                    "entry_id": entry_id,
+                }
+            ]
+        )
+        self.gl = pd.concat([self.gl, new_lines], ignore_index=True)
+        self.bank = pd.concat([self.bank, new_bank], ignore_index=True)
+        return entry_id
 
     def record(self, error_type, ref, fix, note, related=None):
         self.errors.append(
@@ -379,6 +440,68 @@ class Planter:
                 "Customer deposit on the bank statement was never recorded.",
             )
 
+    def transposed_amounts(self):
+        for entry_id in self.pick(
+            "Payment - ", keep=lambda c: bool(transpose_spots(c // 100))
+        ):
+            right = self.cents_of(entry_id)
+            wrong = transpose_dollars(self.rng, right)
+            rows = self.gl["entry_id"] == entry_id
+            expense_account = int(
+                self.gl.loc[rows & (self.gl["account_id"] != 1000), "account_id"].iloc[
+                    0
+                ]
+            )
+            self.gl.loc[rows & (self.gl["debit_cents"] > 0), "debit_cents"] = wrong
+            self.gl.loc[rows & (self.gl["credit_cents"] > 0), "credit_cents"] = wrong
+            diff = right - wrong
+            if diff > 0:  # recorded too little: add the missing expense
+                fix = [fix_line(expense_account, diff, 0), fix_line(1000, 0, diff)]
+            else:  # recorded too much: take the excess back out
+                fix = [fix_line(1000, -diff, 0), fix_line(expense_account, 0, -diff)]
+            self.record(
+                "transposed_amount",
+                entry_id,
+                fix,
+                f"Recorded {wrong / 100:,.2f}; the bank paid {right / 100:,.2f}.",
+            )
+
+    def wrong_period(self):
+        approved = self.vendors[
+            self.vendors["approved"]
+            & self.vendors["account_id"].isin([6100, 6200, 6500])
+        ]
+        for _ in range(ERRORS_PER_TYPE):
+            vendor = approved.iloc[self.rng.randrange(len(approved))]
+            cents = random_cents(self.rng, *AMOUNT_RANGES[int(vendor["account_id"])])
+            date = self.rng.choice(self.days[-10:-4])
+            entry_id = self.add_payment(
+                date, vendor, cents, f"Payment - {vendor['name']} - Nov 2026 service"
+            )
+            self.record(
+                "wrong_period",
+                entry_id,
+                [fix_line(1200, cents, 0), fix_line(vendor["account_id"], 0, cents)],
+                "Paid in October for November service: move from expense to Prepaid Expenses.",
+            )
+
+    def unapproved_vendors(self):
+        unapproved = self.vendors[~self.vendors["approved"]]
+        for _, vendor in pd.concat(
+            [unapproved, unapproved]
+        ).iterrows():  # two payments to each
+            cents = random_cents(self.rng, *AMOUNT_RANGES[int(vendor["account_id"])])
+            date = self.rng.choice(self.days[:-4])
+            entry_id = self.add_payment(
+                date, vendor, cents, f"Payment - {vendor['name']}"
+            )
+            self.record(
+                "unapproved_vendor",
+                entry_id,
+                None,
+                "Vendor is not approved. Hold and escalate to AP; no entry until resolved.",
+            )
+
     def renumber(self):
         """Final ids in date order, shuffled within each day, so no error can be spotted by its id."""
         keys = {e: self.rng.random() for e in sorted(self.gl["entry_id"].unique())}
@@ -423,6 +546,9 @@ def plant_errors(rng, gl, bank, vendors, days):
     p = Planter(rng, gl, bank, vendors, days)
     p.duplicate_payments()
     p.missing_deposits()
+    p.transposed_amounts()
+    p.wrong_period()
+    p.unapproved_vendors()
     p.renumber()
     return p.gl, p.bank, p.answer_key()
 
