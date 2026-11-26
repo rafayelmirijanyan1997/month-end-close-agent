@@ -235,6 +235,56 @@ def make_ledger(rng, vendors, days):
     return pd.DataFrame(ledger.lines)
 
 
+def add_business_days(date, n):
+    """The date n business days after `date` (weekends skipped)."""
+    while n > 0:
+        date += dt.timedelta(days=1)
+        if date.weekday() < 5:
+            n -= 1
+    return date
+
+
+def bank_description(memo):
+    """Turn a ledger memo into the kind of text a bank prints."""
+    if memo.startswith(("Payment - ", "Rent - ")):
+        return "ACH DEBIT " + memo.split(" - ", 1)[1].upper()[:22]
+    if memo == "Customer receipt":
+        return "DEPOSIT"
+    return memo.upper()
+
+
+def make_bank(rng, gl, month_end):
+    """The bank statement for the month, built from the ledger's cash lines."""
+    cash = gl[gl["account_id"] == 1000]
+    rows = []
+    for _, line in cash.iterrows():
+        amount = int(
+            line["debit_cents"] - line["credit_cents"]
+        )  # + money in, - money out
+        if line["memo"] == "Bank service fee":
+            delay = 0  # the bank charges its own fee on the day
+        elif amount > 0:
+            delay = rng.choice([0, 0, 1])  # deposits usually clear the same day
+        else:
+            delay = rng.choice(
+                [1, 2, 2, 3]
+            )  # payments take 1 to 3 business days to clear
+        cleared = add_business_days(dt.date.fromisoformat(line["date"]), delay)
+        if cleared > month_end:
+            continue  # clears next month: an outstanding item, so not on this statement
+        rows.append(
+            {
+                "date": cleared.isoformat(),
+                "amount_cents": amount,
+                "description": bank_description(line["memo"]),
+                "entry_id": line["entry_id"],
+            }
+        )
+    bank = pd.DataFrame(rows).sort_values("date", kind="stable").reset_index(drop=True)
+    bank.insert(0, "bank_id", [f"B{i + 1:05d}" for i in range(len(bank))])
+    return bank
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=42)
@@ -246,15 +296,20 @@ def main():
 
     accounts = pd.DataFrame(ACCOUNTS, columns=["account_id", "name", "type"])
     vendors = make_vendors(rng, fake)
-    gl = make_ledger(rng, vendors, business_days(PERIOD))
+
+    days = business_days(PERIOD)
+    gl = make_ledger(rng, vendors, days)
+    bank = make_bank(rng, gl, days[-1])
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     accounts.to_csv(OUT_DIR / "accounts.csv", index=False)
     vendors.to_csv(OUT_DIR / "vendors.csv", index=False)
     gl.to_csv(OUT_DIR / "gl.csv", index=False)
+    bank.drop(columns="entry_id").to_csv(OUT_DIR / "bank.csv", index=False)
     print(
-        f"wrote {len(accounts)} accounts, {len(vendors)} vendors and "
-        f"{gl['entry_id'].nunique()} journal entries ({len(gl)} lines) to {OUT_DIR}/"
+        f"wrote {len(accounts)} accounts, {len(vendors)} vendors, "
+        f"{gl['entry_id'].nunique()} journal entries ({len(gl)} lines) "
+        f"and {len(bank)} bank lines to {OUT_DIR}/"
     )
 
 
