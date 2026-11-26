@@ -12,6 +12,8 @@ import pandas as pd
 from faker import Faker
 import datetime as dt
 
+import json
+
 OUT_DIR = Path("data/generated")
 PERIOD = "2026-10"
 
@@ -285,6 +287,146 @@ def make_bank(rng, gl, month_end):
     return bank
 
 
+ERRORS_PER_TYPE = 8
+
+
+def fix_line(account_id, debit_cents, credit_cents):
+    return {
+        "account_id": int(account_id),
+        "debit_cents": int(debit_cents),
+        "credit_cents": int(credit_cents),
+    }
+
+
+class Planter:
+    """Plants known errors into correct books and records each one for the answer key."""
+
+    def __init__(self, rng, gl, bank, vendors, days):
+        self.rng, self.gl, self.bank, self.vendors, self.days = (
+            rng,
+            gl,
+            bank,
+            vendors,
+            days,
+        )
+        self.used = set()  # entries that already carry an error
+        self.errors = []
+        self.n_new = 0
+
+    def cents_of(self, entry_id):
+        cash = self.gl[
+            (self.gl["entry_id"] == entry_id) & (self.gl["account_id"] == 1000)
+        ].iloc[0]
+        return int(abs(cash["debit_cents"] - cash["credit_cents"]))
+
+    def pick(self, memo_prefix, keep=lambda cents: True):
+        """ERRORS_PER_TYPE unused entries whose memo starts with memo_prefix and whose cash line is on the bank."""
+        on_bank = set(self.bank["entry_id"])
+        candidates = sorted(
+            e
+            for e in self.gl.loc[
+                self.gl["memo"].str.startswith(memo_prefix), "entry_id"
+            ].unique()
+            if e in on_bank and e not in self.used and keep(self.cents_of(e))
+        )
+        chosen = self.rng.sample(candidates, ERRORS_PER_TYPE)
+        self.used.update(chosen)
+        return chosen
+
+    def record(self, error_type, ref, fix, note, related=None):
+        self.errors.append(
+            {
+                "type": error_type,
+                "ref": ref,
+                "related": related,
+                "fix": fix,
+                "note": note,
+            }
+        )
+
+    def duplicate_payments(self):
+        for i, entry_id in enumerate(self.pick("Payment - ")):
+            lines = self.gl[self.gl["entry_id"] == entry_id]
+            date = dt.date.fromisoformat(lines["date"].iloc[0])
+            copy_date = min(
+                add_business_days(date, self.rng.randint(0, 4)), self.days[-1]
+            )
+            copy_id = f"DUP{i + 1}"
+            self.gl = pd.concat(
+                [self.gl, lines.assign(entry_id=copy_id, date=copy_date.isoformat())],
+                ignore_index=True,
+            )
+            expense = lines[lines["account_id"] != 1000].iloc[0]
+            cents = int(expense["debit_cents"])
+            self.record(
+                "duplicate_payment",
+                copy_id,
+                [fix_line(1000, cents, 0), fix_line(expense["account_id"], 0, cents)],
+                "Invoice entered twice; the bank paid it once. Reverse the copy.",
+                related=entry_id,
+            )
+
+    def missing_deposits(self):
+        for entry_id in self.pick("Customer receipt"):
+            cents = self.cents_of(entry_id)
+            self.gl = self.gl[
+                self.gl["entry_id"] != entry_id
+            ]  # the receipt was never recorded
+            self.record(
+                "missing_deposit",
+                entry_id,
+                [fix_line(1000, cents, 0), fix_line(1100, 0, cents)],
+                "Customer deposit on the bank statement was never recorded.",
+            )
+
+    def renumber(self):
+        """Final ids in date order, shuffled within each day, so no error can be spotted by its id."""
+        keys = {e: self.rng.random() for e in sorted(self.gl["entry_id"].unique())}
+        gl = self.gl.assign(
+            _key=self.gl["entry_id"].map(keys), _line=range(len(self.gl))
+        )
+        gl = (
+            gl.sort_values(["date", "_key", "_line"])
+            .drop(columns=["_key", "_line"])
+            .reset_index(drop=True)
+        )
+        self.gl_map = {
+            old: f"JE{i + 1:05d}" for i, old in enumerate(dict.fromkeys(gl["entry_id"]))
+        }
+        gl["entry_id"] = gl["entry_id"].map(self.gl_map)
+        bank = self.bank.assign(_key=[self.rng.random() for _ in range(len(self.bank))])
+        bank = (
+            bank.sort_values(["date", "_key"])
+            .drop(columns="_key")
+            .reset_index(drop=True)
+        )
+        bank["bank_id"] = [f"B{i + 1:05d}" for i in range(len(bank))]
+        self.bank_map = dict(zip(bank["entry_id"], bank["bank_id"]))
+        self.gl, self.bank = gl, bank
+
+    def answer_key(self):
+        return [
+            {
+                "error_id": f"E{i + 1:02d}",
+                "type": e["type"],
+                "entry_id": self.gl_map.get(e["ref"]),
+                "bank_id": self.bank_map.get(e["ref"]),
+                "related_entry_id": self.gl_map.get(e["related"]),
+                "fix": e["fix"],
+                "note": e["note"],
+            }
+            for i, e in enumerate(self.errors)
+        ]
+
+
+def plant_errors(rng, gl, bank, vendors, days):
+    p = Planter(rng, gl, bank, vendors, days)
+    p.duplicate_payments()
+    p.missing_deposits()
+    p.renumber()
+    return p.gl, p.bank, p.answer_key()
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=42)
@@ -301,11 +443,15 @@ def main():
     gl = make_ledger(rng, vendors, days)
     bank = make_bank(rng, gl, days[-1])
 
+    gl, bank, errors = plant_errors(rng, gl, bank, vendors, days)
+
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     accounts.to_csv(OUT_DIR / "accounts.csv", index=False)
     vendors.to_csv(OUT_DIR / "vendors.csv", index=False)
     gl.to_csv(OUT_DIR / "gl.csv", index=False)
     bank.drop(columns="entry_id").to_csv(OUT_DIR / "bank.csv", index=False)
+    answer_key = {"seed": args.seed, "period": PERIOD, "errors": errors}
+    (OUT_DIR / "ground_truth.json").write_text(json.dumps(answer_key, indent=2))
     print(
         f"wrote {len(accounts)} accounts, {len(vendors)} vendors, "
         f"{gl['entry_id'].nunique()} journal entries ({len(gl)} lines) "
