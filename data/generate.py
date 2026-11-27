@@ -553,14 +553,12 @@ def plant_errors(rng, gl, bank, vendors, days):
     return p.gl, p.bank, p.answer_key()
 
 
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--seed", type=int, default=42)
-    args = ap.parse_args()
-
-    rng = random.Random(args.seed)
+def generate(seed, out_dir=OUT_DIR):
+    """Write one month of books with planted errors, and its answer key, to out_dir."""
+    out_dir = Path(out_dir)
+    rng = random.Random(seed)
     fake = Faker()
-    fake.seed_instance(args.seed)
+    fake.seed_instance(seed)
 
     accounts = pd.DataFrame(ACCOUNTS, columns=["account_id", "name", "type"])
     vendors = make_vendors(rng, fake)
@@ -571,18 +569,25 @@ def main():
 
     gl, bank, errors = plant_errors(rng, gl, bank, vendors, days)
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    accounts.to_csv(OUT_DIR / "accounts.csv", index=False)
-    vendors.to_csv(OUT_DIR / "vendors.csv", index=False)
-    gl.to_csv(OUT_DIR / "gl.csv", index=False)
-    bank.drop(columns="entry_id").to_csv(OUT_DIR / "bank.csv", index=False)
-    answer_key = {"seed": args.seed, "period": PERIOD, "errors": errors}
-    (OUT_DIR / "ground_truth.json").write_text(json.dumps(answer_key, indent=2))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    accounts.to_csv(out_dir / "accounts.csv", index=False)
+    vendors.to_csv(out_dir / "vendors.csv", index=False)
+    gl.to_csv(out_dir / "gl.csv", index=False)
+    bank.drop(columns="entry_id").to_csv(out_dir / "bank.csv", index=False)
+    answer_key = {"seed": seed, "period": PERIOD, "errors": errors}
+    (out_dir / "ground_truth.json").write_text(json.dumps(answer_key, indent=2))
     print(
         f"wrote {len(accounts)} accounts, {len(vendors)} vendors, "
         f"{gl['entry_id'].nunique()} journal entries ({len(gl)} lines) "
-        f"and {len(bank)} bank lines to {OUT_DIR}/"
+        f"and {len(bank)} bank lines to {out_dir}/"
     )
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--seed", type=int, default=42)
+    args = ap.parse_args()
+    generate(args.seed)
 
 
 if __name__ == "__main__":
