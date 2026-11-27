@@ -86,3 +86,46 @@ def match_bank_to_gl(window_days=5, db_path=DB_PATH):
         "unmatched_gl": [g for g in leftover if g["date"] <= cutoff],
         "possibly_outstanding_gl": [g for g in leftover if g["date"] > cutoff],
     }
+
+
+def find_duplicates(window_days=7, db_path=DB_PATH):
+    """Pairs of payments to the same vendor for the same amount, no more than window_days apart."""
+    sql = """
+        SELECT a.vendor_id, a.credit_cents AS amount_cents,
+               a.entry_id AS first_entry_id, a.date AS first_date,
+               b.entry_id AS second_entry_id, b.date AS second_date, a.memo
+        FROM gl AS a
+        JOIN gl AS b
+          ON a.vendor_id = b.vendor_id
+         AND a.credit_cents = b.credit_cents
+         AND a.entry_id < b.entry_id
+        WHERE a.account_id = 1000 AND b.account_id = 1000
+          AND a.credit_cents > 0
+          AND ABS(julianday(b.date) - julianday(a.date)) <= ?
+        ORDER BY a.date, a.entry_id
+    """
+    con = connect(db_path)
+    con.row_factory = sqlite3.Row
+    pairs = [dict(r) for r in con.execute(sql, (window_days,))]
+    con.close()
+    return pairs
+
+
+def check_vendor(vendor_id, db_path=DB_PATH):
+    """Look a vendor up in the vendor master: is it approved, and which account does it book to?"""
+    con = connect(db_path)
+    con.row_factory = sqlite3.Row
+    row = con.execute(
+        "SELECT vendor_id, name, account_id, approved FROM vendors WHERE vendor_id = ?",
+        (vendor_id,),
+    ).fetchone()
+    con.close()
+    if row is None:
+        return {"vendor_id": vendor_id, "found": False}
+    return {
+        "vendor_id": row["vendor_id"],
+        "found": True,
+        "name": row["name"],
+        "default_account_id": row["account_id"],
+        "approved": bool(row["approved"]),
+    }

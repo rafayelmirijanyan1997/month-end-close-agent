@@ -22,7 +22,9 @@ def db(tmp_path):
             ('JE5', '2026-10-30', 6800, 420000, 0, NULL, 'Monthly depreciation'),
             ('JE6', '2026-10-01', 1000, 0, 99900, 'V4', 'Payment - D'),
             ('JE7', '2026-10-13', 1000, 0, 25000, 'V5', 'Payment - E'),
-            ('JE8', '2026-10-13', 1000, 0, 25000, 'V5', 'Payment - E');
+            ('JE8', '2026-10-13', 1000, 0, 25000, 'V5', 'Payment - E'),
+            ('JE9', '2026-10-20', 1000, 0, 50000, 'V1', 'Payment - A'),
+            ('JE10', '2026-10-09', 1000, 0, 25000, 'V2', 'Payment - B');
 
         CREATE TABLE bank (bank_id TEXT, date TEXT, amount_cents INTEGER, description TEXT);
         INSERT INTO bank VALUES
@@ -31,6 +33,11 @@ def db(tmp_path):
             ('B3', '2026-10-09', 88800, 'DEPOSIT'),
             ('B4', '2026-10-12', -99900, 'ACH DEBIT D'),
             ('B5', '2026-10-14', -25000, 'ACH DEBIT E');
+
+        CREATE TABLE vendors (vendor_id TEXT, name TEXT, account_id INTEGER, approved INTEGER);
+        INSERT INTO vendors VALUES
+            ('V1', 'Alpha LLC', 6200, 1),
+            ('V6', 'Shadow Supplies', 6600, 0);
     """)
     con.close()
     return path
