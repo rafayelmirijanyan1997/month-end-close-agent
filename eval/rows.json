@@ -148,14 +148,14 @@
   {
     "approach": "rules+agent",
     "seed": 42,
-    "seconds": 35.83850183401955,
-    "tokens": 332284,
+    "seconds": 23.4451272499864,
+    "tokens": 49696,
     "errors": 40,
-    "found": 32,
-    "flags": 32,
-    "correct_flags": 32,
-    "fixes_needed": 24,
-    "fixes_correct": 24,
+    "found": 40,
+    "flags": 40,
+    "correct_flags": 40,
+    "fixes_needed": 32,
+    "fixes_correct": 32,
     "errors_by_type": {
       "duplicate_payment": 8,
       "missing_deposit": 8,
@@ -167,20 +167,21 @@
       "duplicate_payment": 8,
       "missing_deposit": 8,
       "transposed_amount": 8,
+      "wrong_period": 8,
       "unapproved_vendor": 8
     }
   },
   {
     "approach": "rules+agent",
     "seed": 7,
-    "seconds": 34.57765662501333,
-    "tokens": 287580,
+    "seconds": 14.986859458032995,
+    "tokens": 42459,
     "errors": 40,
-    "found": 32,
-    "flags": 32,
-    "correct_flags": 32,
-    "fixes_needed": 24,
-    "fixes_correct": 24,
+    "found": 40,
+    "flags": 40,
+    "correct_flags": 40,
+    "fixes_needed": 32,
+    "fixes_correct": 32,
     "errors_by_type": {
       "duplicate_payment": 8,
       "missing_deposit": 8,
@@ -192,20 +193,21 @@
       "duplicate_payment": 8,
       "missing_deposit": 8,
       "transposed_amount": 8,
+      "wrong_period": 8,
       "unapproved_vendor": 8
     }
   },
   {
     "approach": "rules+agent",
     "seed": 123,
-    "seconds": 23.08136937499512,
-    "tokens": 260228,
+    "seconds": 26.343213292013388,
+    "tokens": 138486,
     "errors": 40,
-    "found": 32,
-    "flags": 32,
-    "correct_flags": 32,
-    "fixes_needed": 24,
-    "fixes_correct": 24,
+    "found": 40,
+    "flags": 40,
+    "correct_flags": 40,
+    "fixes_needed": 32,
+    "fixes_correct": 32,
     "errors_by_type": {
       "duplicate_payment": 8,
       "missing_deposit": 8,
@@ -217,6 +219,7 @@
       "duplicate_payment": 8,
       "missing_deposit": 8,
       "transposed_amount": 8,
+      "wrong_period": 8,
       "unapproved_vendor": 8
     }
   }
