@@ -59,8 +59,7 @@ How to work:
 2. Investigate what is left, and use find_duplicates. Check vendor approval with SQL or check_vendor.
 3. Consider cut-off: do any expenses recorded in October relate to a different period?
 4. Flag only what you have evidence for, once per error. Flag each error as soon as you have the
-   evidence, and draft its fix in the same or the next turn; do not save them all for the end.
-Make up to 10 tool calls per turn, not more. You have at most {max_steps} turns."""
+   evidence, giving its fix_lines in the same flag_exception call; do not save them all for the end."""
 
 
 class JournalLine(BaseModel):
@@ -121,16 +120,34 @@ def make_tools(wp, db_path):
         entry_id: str | None = None,
         bank_id: str | None = None,
         related_entry_id: str | None = None,
+        fix_lines: list[JournalLine] | None = None,
     ) -> dict:
-        """Record one error with your evidence. Give the entry_id and/or bank_id it is about."""
+        """Record one error with your evidence, together with the journal entry that corrects it.
+
+        Give the entry_id and/or bank_id the error is about. Give fix_lines for every error type except
+        unapproved_vendor; each line has account_id and a debit_cents or credit_cents. Recording the
+        error and its fix in one call keeps each fix attached to the right error.
+        """
         with lock:
-            return wp.flag_exception(
+            result = wp.flag_exception(
                 error_type,
                 reason,
                 entry_id=entry_id,
                 bank_id=bank_id,
                 related_entry_id=related_entry_id,
             )
+            if fix_lines and result["status"] == "flagged":
+                try:
+                    lines = [line.model_dump() for line in fix_lines]
+                    result["draft"] = wp.draft_journal_entry(
+                        result["flag_id"], lines, reason
+                    )
+                except ValueError as e:
+                    result["draft_error"] = (
+                        f"{e}. The error was still recorded as {result['flag_id']}; "
+                        "send a corrected entry with draft_journal_entry."
+                    )
+            return result
 
     @tool
     def draft_journal_entry(flag_id: str, lines: list[JournalLine], memo: str) -> dict:

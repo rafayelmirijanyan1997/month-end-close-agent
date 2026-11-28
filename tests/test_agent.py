@@ -167,3 +167,64 @@ def test_a_second_cut_off_in_a_row_ends_the_close(db):
     assert (
         len(model.seen) == 2
     )  # one retry, then stop instead of looping until the step limit
+
+
+def test_a_flag_and_its_fix_are_recorded_together(db):
+    fix = [
+        {"account_id": 1000, "debit_cents": 88800},
+        {"account_id": 6200, "credit_cents": 88800},
+    ]
+    model = ScriptedModel(
+        replies=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call(
+                        "flag_exception",
+                        {
+                            "error_type": "missing_deposit",
+                            "reason": "r",
+                            "bank_id": "B3",
+                            "fix_lines": fix,
+                        },
+                        "c1",
+                    )
+                ],
+            ),
+            AIMessage(content="Done."),
+        ]
+    )
+    wp = run_agent(db_path=db, llm=model)
+    assert (
+        wp.drafts[0]["flag_id"] == wp.flags[0]["flag_id"]
+    )  # the fix is attached to its own error
+
+
+def test_a_bad_fix_still_records_the_error_and_says_how_to_correct_it(db):
+    unbalanced = [
+        {"account_id": 1000, "debit_cents": 88800},
+        {"account_id": 6200, "credit_cents": 1},
+    ]
+    model = ScriptedModel(
+        replies=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call(
+                        "flag_exception",
+                        {
+                            "error_type": "missing_deposit",
+                            "reason": "r",
+                            "bank_id": "B3",
+                            "fix_lines": unbalanced,
+                        },
+                        "c1",
+                    )
+                ],
+            ),
+            AIMessage(content="Done."),
+        ]
+    )
+    wp = run_agent(db_path=db, llm=model)
+    assert len(wp.flags) == 1 and wp.drafts == []
+    assert "does not balance" in model.seen[-1][-1].content
