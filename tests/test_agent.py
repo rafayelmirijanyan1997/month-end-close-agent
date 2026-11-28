@@ -156,3 +156,14 @@ def test_a_reply_that_is_cut_off_is_retried_not_treated_as_finished(db):
     assert len(model.seen) == 2  # it was given a second turn
     note = model.seen[1][-1]
     assert isinstance(note, HumanMessage) and "cut off" in note.content
+
+
+def test_a_second_cut_off_in_a_row_ends_the_close(db):
+    cut_off = AIMessage(content="", response_metadata={"finish_reason": "length"})
+    model = ScriptedModel(
+        replies=[cut_off, cut_off, AIMessage(content="never reached")]
+    )
+    run_agent(db_path=db, llm=model)
+    assert (
+        len(model.seen) == 2
+    )  # one retry, then stop instead of looping until the step limit

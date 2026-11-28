@@ -169,13 +169,15 @@ def build_graph(llm, tool_list, max_steps):
     def think(state):
         reply = model.invoke(compact(state["messages"]))
         update = {"messages": [reply], "steps": state["steps"] + 1}
-        if (
+        cut_off = (
             reply.response_metadata.get("finish_reason") == "length"
             and not reply.tool_calls
-        ):
+        )
+        retried_already = state["messages"][-1].content == CUT_OFF_NOTE
+        if cut_off and not retried_already:
             update["messages"].append(
                 HumanMessage(CUT_OFF_NOTE)
-            )  # tell the model, and let it try again
+            )  # tell the model, and let it try once more
         return update
 
     def next_node(state):
@@ -213,6 +215,13 @@ def to_trace(messages):
                     "input_tokens": usage.get("input_tokens", 0),
                     "output_tokens": usage.get("output_tokens", 0),
                     "finish_reason": m.response_metadata.get("finish_reason"),
+                    "invalid_tool_calls": [
+                        {"name": c.get("name"), "args": str(c.get("args"))[:300]}
+                        for c in m.invalid_tool_calls
+                    ],
+                    "reasoning_chars": len(
+                        str(m.additional_kwargs.get("reasoning_content") or "")
+                    ),
                 }
             )
         elif isinstance(m, ToolMessage):
