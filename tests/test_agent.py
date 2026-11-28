@@ -124,3 +124,22 @@ def test_the_trace_is_saved_next_to_the_database(db):
     )
     lines = (db.parent / "agent_trace.jsonl").read_text().splitlines()
     assert json.loads(lines[0])["kind"] == "model"
+
+
+def test_old_tool_results_are_shortened_but_the_worklist_is_kept():
+    from close.agent import compact
+
+    messages = [
+        ToolMessage(content="m" * 5000, name="match_bank_to_gl", tool_call_id="t0")
+    ]
+    messages += [
+        ToolMessage(content="x" * 5000, name="query_ledger", tool_call_id=f"t{i}")
+        for i in range(1, 11)
+    ]
+    sent = compact(messages, keep_recent=3)
+    assert len(sent[0].content) == 5000  # the worklist stays whole
+    assert all(
+        len(m.content) < 400 for m in sent[1:8]
+    )  # the 7 older queries are shortened
+    assert all(len(m.content) == 5000 for m in sent[8:])  # the 3 most recent stay whole
+    assert len(messages[1].content) == 5000  # the stored history is untouched

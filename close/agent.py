@@ -18,6 +18,7 @@ from close.db import DB_PATH
 from close.workpaper import Workpaper
 
 MAX_STEPS = 40
+KEEP_RECENT = 8  # older ones are shortened
 RUNS_DIR = Path("runs")
 
 SYSTEM_PROMPT = """You are a senior accountant doing the October 2026 month-end close for a small company.
@@ -74,7 +75,15 @@ def make_tools(wp, db_path):
     @tool
     def match_bank_to_gl() -> dict:
         """Match bank lines to ledger cash lines by amount within 5 days. Returns what is left unmatched."""
-        return tools.match_bank_to_gl(db_path=db_path)
+        result = tools.match_bank_to_gl(db_path=db_path)
+        late = result.pop("possibly_outstanding_gl")
+        result["possibly_outstanding_gl"] = {
+            "count": len(late),
+            "total_cents": sum(g["amount_cents"] for g in late),
+            "note": "ledger lines from the last days of the month with no bank line yet; usually items "
+            "that clear next month. Query gl if you need details.",
+        }
+        return result
 
     @tool
     def find_duplicates() -> list:
@@ -122,6 +131,26 @@ def make_tools(wp, db_path):
     ]
 
 
+def compact(messages, keep_recent=KEEP_RECENT):
+    """Shorten old tool results so each turn's input stays small.
+
+    The match_bank_to_gl result is never shortened: it is the worklist. The full history stays in
+    the graph state (and the trace); only what is sent to the model is shortened.
+    """
+    tool_positions = [i for i, m in enumerate(messages) if isinstance(m, ToolMessage)]
+    old = set(tool_positions[:-keep_recent]) if keep_recent else set(tool_positions)
+    out = []
+    for i, m in enumerate(messages):
+        if i in old and m.name != "match_bank_to_gl" and len(str(m.content)) > 300:
+            short = (
+                str(m.content)[:300]
+                + " ...[older result shortened; call the tool again if you need it]"
+            )
+            m = m.model_copy(update={"content": short})
+        out.append(m)
+    return out
+
+
 class State(MessagesState):
     steps: int
 
@@ -130,7 +159,8 @@ def build_graph(llm, tool_list, max_steps):
     model = llm.bind_tools(tool_list)
 
     def think(state):
-        reply = model.invoke(state["messages"])
+
+        reply = model.invoke(compact(state["messages"]))
         return {"messages": [reply], "steps": state["steps"] + 1}
 
     def next_node(state):
