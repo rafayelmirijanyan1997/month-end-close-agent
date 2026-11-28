@@ -163,6 +163,7 @@ def to_trace(messages):
                     "text": str(m.content)[:1000],
                     "input_tokens": usage.get("input_tokens", 0),
                     "output_tokens": usage.get("output_tokens", 0),
+                    "finish_reason": m.response_metadata.get("finish_reason"),
                 }
             )
         elif isinstance(m, ToolMessage):

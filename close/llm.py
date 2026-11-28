@@ -9,4 +9,10 @@ def make_llm():
     load_dotenv()
     from langchain_nvidia_ai_endpoints import ChatNVIDIA
 
-    return ChatNVIDIA(model=os.environ["NVIDIA_MODEL"], temperature=0, max_tokens=4096)
+    thinking = os.getenv("NVIDIA_THINKING", "off") == "on"
+    return ChatNVIDIA(
+        model=os.environ["NVIDIA_MODEL"],
+        temperature=0,
+        max_completion_tokens=4096,
+        model_kwargs={"chat_template_kwargs": {"enable_thinking": thinking}},
+    )
