@@ -9,12 +9,14 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from close.agent import run_agent
 from close.db import build_db
 from close.rules import run_rules
 from close.workpaper import ERROR_TYPES
 from data.generate import generate
 
-APPROACHES = {"rules": run_rules}
+APPROACHES = {"rules": run_rules, "agent": run_agent}
+
 SEEDS = [42, 7, 123]
 WORK_DIR = Path("data/generated/eval")
 RESULTS = Path("eval/results.md")
@@ -89,11 +91,13 @@ def evaluate(approaches, seeds):
             start = time.perf_counter()
             wp = APPROACHES[name](db_path=db_path)
             seconds = time.perf_counter() - start
+            wp.save(data_dir / f"{name}_workpaper.json")
             rows.append(
                 {
                     "approach": name,
                     "seed": seed,
                     "seconds": seconds,
+                    "tokens": getattr(wp, "tokens", 0),  # only the agent uses a model
                     **score(errors, wp.flags, wp.drafts),
                 }
             )
@@ -111,8 +115,8 @@ def report(rows):
         "",
         f"Seeds {', '.join(map(str, seeds))}; 40 planted errors per seed. Written by `python -m eval.run`.",
         "",
-        "| approach | recall | precision | correct fixes | seconds per close |",
-        "|---|---|---|---|---|",
+        "| approach | recall | precision | correct fixes | seconds per close | tokens per close |",
+        "|---|---|---|---|---|---|",
     ]
     by_approach = {}
     for r in rows:
@@ -128,13 +132,14 @@ def report(rows):
                 "fixes_needed",
                 "fixes_correct",
                 "seconds",
+                "tokens",
             )
         }
         out.append(
             f"| {name} | {pct(total['found'], total['errors'])} ({total['found']}/{total['errors']}) "
             f"| {pct(total['correct_flags'], total['flags'])} ({total['correct_flags']}/{total['flags']}) "
             f"| {pct(total['fixes_correct'], total['fixes_needed'])} "
-            f"| {total['seconds'] / len(rs):.2f} |"
+            f"| {total['seconds'] / len(rs):.2f} | {total['tokens'] // len(rs):,} |"
         )
     out += [
         "",
@@ -171,7 +176,9 @@ def main():
     )
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
     args = ap.parse_args()
-    text = report(evaluate(args.approaches, args.seeds))
+    rows = evaluate(args.approaches, args.seeds)
+    Path("eval/rows.json").write_text(json.dumps(rows, indent=2))
+    text = report(rows)
     RESULTS.write_text(text)
     print(text)
 
