@@ -1,7 +1,7 @@
 import json
 
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 from close.agent import run_agent
@@ -143,3 +143,16 @@ def test_old_tool_results_are_shortened_but_the_worklist_is_kept():
     )  # the 7 older queries are shortened
     assert all(len(m.content) == 5000 for m in sent[8:])  # the 3 most recent stay whole
     assert len(messages[1].content) == 5000  # the stored history is untouched
+
+
+def test_a_reply_that_is_cut_off_is_retried_not_treated_as_finished(db):
+    model = ScriptedModel(
+        replies=[
+            AIMessage(content="", response_metadata={"finish_reason": "length"}),
+            AIMessage(content="Done."),
+        ]
+    )
+    run_agent(db_path=db, llm=model)
+    assert len(model.seen) == 2  # it was given a second turn
+    note = model.seen[1][-1]
+    assert isinstance(note, HumanMessage) and "cut off" in note.content

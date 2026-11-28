@@ -18,6 +18,14 @@ from close.db import DB_PATH
 from close.workpaper import Workpaper
 
 MAX_STEPS = 40
+
+
+CUT_OFF_NOTE = (
+    "Your last reply was cut off because it was too long, so none of its tool calls ran. "
+    "Send at most 10 tool calls per turn."
+)
+
+
 KEEP_RECENT = 8  # older ones are shortened
 RUNS_DIR = Path("runs")
 
@@ -50,9 +58,9 @@ How to work:
    usually outstanding items that clear next month: they are normal, not errors.
 2. Investigate what is left, and use find_duplicates. Check vendor approval with SQL or check_vendor.
 3. Consider cut-off: do any expenses recorded in October relate to a different period?
-4. Flag only what you have evidence for, once per error. Then draft a fix for each flag that needs one.
-You can make several tool calls in one turn; do so to save steps. You have at most {max_steps} turns.
-When you are done, reply with a short summary and no tool call."""
+4. Flag only what you have evidence for, once per error. Flag each error as soon as you have the
+   evidence, and draft its fix in the same or the next turn; do not save them all for the end.
+Make up to 10 tool calls per turn, not more. You have at most {max_steps} turns."""
 
 
 class JournalLine(BaseModel):
@@ -159,13 +167,24 @@ def build_graph(llm, tool_list, max_steps):
     model = llm.bind_tools(tool_list)
 
     def think(state):
-
         reply = model.invoke(compact(state["messages"]))
-        return {"messages": [reply], "steps": state["steps"] + 1}
+        update = {"messages": [reply], "steps": state["steps"] + 1}
+        if (
+            reply.response_metadata.get("finish_reason") == "length"
+            and not reply.tool_calls
+        ):
+            update["messages"].append(
+                HumanMessage(CUT_OFF_NOTE)
+            )  # tell the model, and let it try again
+        return update
 
     def next_node(state):
         last = state["messages"][-1]
-        if last.tool_calls and state["steps"] < max_steps:
+        if state["steps"] >= max_steps:
+            return END
+        if isinstance(last, HumanMessage):
+            return "think"
+        if last.tool_calls:
             return "tools"
         return END
 
@@ -173,8 +192,8 @@ def build_graph(llm, tool_list, max_steps):
     graph.add_node("think", think)
     graph.add_node("tools", ToolNode(tool_list, handle_tool_errors=True))
     graph.add_edge(START, "think")
-    graph.add_conditional_edges("think", next_node, ["tools", END])
     graph.add_edge("tools", "think")
+    graph.add_conditional_edges("think", next_node, ["tools", "think", END])
     return graph.compile()
 
 
