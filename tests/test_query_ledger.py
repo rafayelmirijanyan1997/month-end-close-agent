@@ -37,5 +37,6 @@ def test_read_only_connection_blocks_a_write_disguised_as_select(db):
 
 
 def test_refuses_a_second_statement(db):
-    with pytest.raises(sqlite3.ProgrammingError):
+    # Python 3.12 raises ProgrammingError; older versions raise Warning
+    with pytest.raises((sqlite3.ProgrammingError, sqlite3.Warning)):
         query_ledger("SELECT 1; DROP TABLE accounts", db_path=db)

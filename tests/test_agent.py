@@ -290,3 +290,25 @@ def test_each_turn_ends_with_a_progress_note(db):
     first, second = model.seen[0][-1].content, model.seen[1][-1].content
     assert "turn 1 of 5" in first and "No errors recorded yet" in first
     assert "turn 2 of 5" in second and "missing_deposit: B3" in second
+
+
+def test_tool_calls_on_the_last_turn_are_still_run(db):
+    fix = [
+        {"account_id": 1000, "debit_cents": 88800},
+        {"account_id": 6200, "credit_cents": 88800},
+    ]
+    flag = call(
+        "flag_exception",
+        {
+            "error_type": "missing_deposit",
+            "reason": "r",
+            "bank_id": "B3",
+            "fix_lines": fix,
+        },
+        "c1",
+    )
+    model = ScriptedModel(replies=[AIMessage(content="", tool_calls=[flag])])
+    wp = run_agent(db_path=db, llm=model, max_steps=1)
+    assert (
+        len(model.seen) == 1 and len(wp.flags) == 1
+    )  # one turn, and its flag was saved

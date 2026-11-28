@@ -37,7 +37,8 @@ SAME_SHAPE_LIMIT = (
 PAGING_NOTE = (
     "You have now run this query several times with only its values changed, which looks like paging "
     "through a table. That wastes turns: match_bank_to_gl has already compared every bank line with the "
-    "ledger. To check particular items, query them together, for example WHERE debit_cents IN (...)."
+    "ledger. To check particular items, query them together, for example WHERE debit_cents IN (...). To "
+    "review a kind of entry, narrow by account, date range or memo, or GROUP BY, so one query covers it."
 )
 
 
@@ -79,6 +80,7 @@ How to work:
    usually outstanding items that clear next month: they are normal, not errors.
 2. Investigate what is left, and use find_duplicates. Check vendor approval with SQL or check_vendor.
 3. Consider cut-off: do any expenses recorded in October relate to a different period?
+   review_expense_memos shows what each expense was for.
 4. Flag only what you have evidence for, once per error. Flag each error as soon as you have the
    evidence, giving its fix_lines in the same flag_exception call; do not save them all for the end."""
 
@@ -184,11 +186,22 @@ def make_tools(wp, db_path):
                 flag_id, [line.model_dump() for line in lines], memo
             )
 
+    @tool
+    def review_expense_memos() -> list:
+        """List every distinct description of this month's expense entries: how often it occurs, its total and dates.
+
+        About a thousand expense lines collapse to a few dozen descriptions, so unusual ones stand out.
+        Use it to review what payments were for, for example for cut-off. For a description used at
+        most 3 times, entry_ids lists its entries.
+        """
+        return tools.summarize_expense_memos(db_path=db_path)
+
     return [
         query_ledger,
         match_bank_to_gl,
         find_duplicates,
         check_vendor,
+        review_expense_memos,
         flag_exception,
         draft_journal_entry,
     ]
@@ -256,19 +269,22 @@ def build_graph(llm, tool_list, max_steps, wp):
 
     def next_node(state):
         last = state["messages"][-1]
-        if state["steps"] >= max_steps:
-            return END
-        if isinstance(last, HumanMessage):
-            return "think"
-        if last.tool_calls:
+        if isinstance(
+            last, HumanMessage
+        ):  # a cut-off note: try again if turns are left
+            return "think" if state["steps"] < max_steps else END
+        if last.tool_calls:  # run them even on the last turn, so its findings are saved
             return "tools"
         return END
+
+    def after_tools(state):
+        return "think" if state["steps"] < max_steps else END
 
     graph = StateGraph(State)
     graph.add_node("think", think)
     graph.add_node("tools", ToolNode(tool_list, handle_tool_errors=True))
     graph.add_edge(START, "think")
-    graph.add_edge("tools", "think")
+    graph.add_conditional_edges("tools", after_tools, ["think", END])
     graph.add_conditional_edges("think", next_node, ["tools", "think", END])
     return graph.compile()
 
@@ -311,17 +327,47 @@ def to_trace(messages):
     return trace
 
 
-def run_agent(db_path=DB_PATH, llm=None, max_steps=MAX_STEPS):
+HYBRID_STEPS = """How to work:
+1. A rules engine has already done the bank reconciliation, duplicate, transposition and vendor checks,
+   and its flags are in the progress note. Do not call match_bank_to_gl or find_duplicates, and do not
+   re-check those error types.
+2. Look for cut-off errors: expense payments recorded in October that relate to a different period.
+   Start with review_expense_memos, which lists every distinct expense description in one call; the
+   memo usually says what a payment was for. Query single entries only to confirm details.
+3. Flag each error you have evidence for as soon as you find it, with its fix_lines in the same
+   flag_exception call. When nothing is left to check, stop."""
+HYBRID_SYSTEM_PROMPT = SYSTEM_PROMPT.split("How to work:")[0] + HYBRID_STEPS
+
+DEFAULT_TASK = "Please do the October 2026 close."
+HYBRID_TASK = (
+    "A rules engine has already reconciled the books. It covers duplicate payments, unrecorded deposits, "
+    "transposed amounts and unapproved vendors, and the errors it recorded are listed in the progress note: "
+    "do not re-check them. It does not assess cut-off or anything that needs judgement. Your job is to find "
+    "the errors it would miss, record each one you have evidence for, and then stop."
+)
+
+
+def run_agent(
+    db_path=DB_PATH,
+    llm=None,
+    max_steps=MAX_STEPS,
+    wp=None,
+    task=DEFAULT_TASK,
+    trace_name="agent_trace.jsonl",
+    system_prompt=SYSTEM_PROMPT,
+):
     if llm is None:
         from close.llm import make_llm
 
         llm = make_llm()
-    wp = Workpaper(db_path=db_path)
+
+    if wp is None:
+        wp = Workpaper(db_path=db_path)
     graph = build_graph(llm, make_tools(wp, db_path), max_steps, wp)
 
     messages = [
-        SystemMessage(SYSTEM_PROMPT.format(max_steps=max_steps)),
-        HumanMessage("Please do the October 2026 close."),
+        SystemMessage(system_prompt.format(max_steps=max_steps)),
+        HumanMessage(task),
     ]
     result = graph.invoke(
         {"messages": messages, "steps": 0}, {"recursion_limit": 2 * max_steps + 5}
@@ -330,9 +376,26 @@ def run_agent(db_path=DB_PATH, llm=None, max_steps=MAX_STEPS):
     wp.tokens = sum(
         t.get("input_tokens", 0) + t.get("output_tokens", 0) for t in wp.trace
     )
-    trace_path = Path(db_path).with_name("agent_trace.jsonl")
+
+    trace_path = Path(db_path).with_name(trace_name)
     trace_path.write_text("".join(json.dumps(t) + "\n" for t in wp.trace))
     return wp
+
+
+def run_rules_then_agent(db_path=DB_PATH, llm=None, max_steps=15):
+    """Rules do the mechanical checks; the agent then looks only for what needs judgement."""
+    from close.rules import run_rules
+
+    wp = run_rules(db_path=db_path)
+    return run_agent(
+        db_path=db_path,
+        llm=llm,
+        max_steps=max_steps,
+        wp=wp,
+        task=HYBRID_TASK,
+        trace_name="rules+agent_trace.jsonl",
+        system_prompt=HYBRID_SYSTEM_PROMPT,
+    )
 
 
 if __name__ == "__main__":

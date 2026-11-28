@@ -1,4 +1,6 @@
-from close.tools import check_vendor, find_duplicates
+import sqlite3
+
+from close.tools import check_vendor, find_duplicates, summarize_expense_memos
 
 
 def test_finds_same_vendor_same_amount_close_together(db):
@@ -40,3 +42,24 @@ def test_unapproved_vendor(db):
 
 def test_unknown_vendor(db):
     assert check_vendor("V999", db_path=db) == {"vendor_id": "V999", "found": False}
+
+
+def test_expense_memos_are_grouped_and_rare_ones_list_their_entries(db):
+    con = sqlite3.connect(db)
+    con.executescript("""
+        INSERT INTO gl VALUES
+            ('JE20', '2026-10-05', 6200, 1000, 0, 'V1', 'Payment - A'),
+            ('JE21', '2026-10-12', 6200, 1000, 0, 'V1', 'Payment - A'),
+            ('JE22', '2026-10-26', 6200, 5000, 0, 'V1', 'Payment - A - Nov 2026 service');
+    """)
+    con.commit()
+    con.close()
+    rows = {r["memo"]: r for r in summarize_expense_memos(db_path=db)}
+    assert (
+        rows["Payment - A"]["entries"] == 2
+        and rows["Payment - A"]["total_cents"] == 2000
+    )
+    assert rows["Payment - A - Nov 2026 service"]["entry_ids"] == "JE22"
+    assert all(
+        r["account_id"] == 6200 for r in rows.values()
+    )  # cash lines (account 1000) are not expenses

@@ -129,3 +129,26 @@ def check_vendor(vendor_id, db_path=DB_PATH):
         "default_account_id": row["account_id"],
         "approved": bool(row["approved"]),
     }
+
+
+def summarize_expense_memos(db_path=DB_PATH):
+    """Every distinct description of this month's expense entries, with how often it occurs.
+
+    About a thousand expense lines collapse to a few dozen descriptions, so unusual ones stand out.
+    For a description used at most 3 times, entry_ids lists its entries.
+    """
+    sql = """
+        SELECT memo, account_id, COUNT(*) AS entries, SUM(debit_cents) AS total_cents,
+               MIN(date) AS first_date, MAX(date) AS last_date,
+               CASE WHEN COUNT(*) <= 3 THEN GROUP_CONCAT(entry_id) END AS entry_ids
+        FROM gl
+        WHERE debit_cents > 0
+          AND account_id IN (SELECT account_id FROM accounts WHERE type = 'expense')
+        GROUP BY memo, account_id
+        ORDER BY memo
+    """
+    con = connect(db_path)
+    con.row_factory = sqlite3.Row
+    rows = [dict(r) for r in con.execute(sql)]
+    con.close()
+    return rows

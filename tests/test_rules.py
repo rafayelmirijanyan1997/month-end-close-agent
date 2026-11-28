@@ -69,3 +69,19 @@ def test_does_not_guess_about_what_it_cannot_explain(books):
     wp = run_rules(db_path=books)
     assert len(wp.flags) == 4
     assert all(f["bank_id"] != "B4" for f in wp.flags)
+
+
+def test_rules_then_agent_starts_from_the_rules_findings(books):
+    from langchain_core.messages import AIMessage
+
+    from close.agent import run_rules_then_agent
+    from tests.test_agent import ScriptedModel
+
+    model = ScriptedModel(replies=[AIMessage(content="Nothing more to record.")])
+    wp = run_rules_then_agent(db_path=books, llm=model)
+    assert len(wp.flags) == 4  # the rules' findings are kept
+    first_turn = model.seen[0]
+    assert "rules engine" in first_turn[1].content  # the agent is told its narrower job
+    assert (
+        "Errors already recorded (4)" in first_turn[-1].content
+    )  # and sees what the rules found

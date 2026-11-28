@@ -9,13 +9,17 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from close.agent import run_agent
+from close.agent import run_agent, run_rules_then_agent
 from close.db import build_db
 from close.rules import run_rules
 from close.workpaper import ERROR_TYPES
 from data.generate import generate
 
-APPROACHES = {"rules": run_rules, "agent": run_agent}
+APPROACHES = {
+    "rules": run_rules,
+    "agent": run_agent,
+    "rules+agent": run_rules_then_agent,
+}
 
 SEEDS = [42, 7, 123]
 WORK_DIR = Path("data/generated/eval")
@@ -175,9 +179,22 @@ def main():
         "--approaches", nargs="+", default=list(APPROACHES), choices=list(APPROACHES)
     )
     ap.add_argument("--seeds", nargs="+", type=int, default=SEEDS)
+    ap.add_argument(
+        "--merge",
+        action="store_true",
+        help="keep saved results for approaches not run now",
+    )
     args = ap.parse_args()
     rows = evaluate(args.approaches, args.seeds)
-    Path("eval/rows.json").write_text(json.dumps(rows, indent=2))
+    rows_path = Path("eval/rows.json")
+    if args.merge and rows_path.exists():
+        kept = [
+            r
+            for r in json.loads(rows_path.read_text())
+            if r["approach"] not in args.approaches
+        ]
+        rows = kept + rows
+    rows_path.write_text(json.dumps(rows, indent=2))
     text = report(rows)
     RESULTS.write_text(text)
     print(text)

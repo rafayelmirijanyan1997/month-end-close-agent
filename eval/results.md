@@ -6,6 +6,7 @@ Seeds 7, 42, 123; 40 planted errors per seed. Written by `python -m eval.run`.
 |---|---|---|---|---|---|
 | rules | 80% (96/120) | 100% (96/96) | 100% | 0.06 | 0 |
 | agent | 44% (53/120) | 91% (53/58) | 85% | 260.46 | 2,073,844 |
+| rules+agent | 80% (96/120) | 100% (96/96) | 100% | 31.17 | 293,364 |
 
 ## Recall by error type (all seeds)
 
@@ -13,6 +14,7 @@ Seeds 7, 42, 123; 40 planted errors per seed. Written by `python -m eval.run`.
 |---|---|---|---|---|---|
 | rules | 24/24 | 24/24 | 24/24 | 0/24 | 24/24 |
 | agent | 19/24 | 8/24 | 18/24 | 8/24 | 0/24 |
+| rules+agent | 24/24 | 24/24 | 24/24 | 0/24 | 24/24 |
 
 ## Every run
 
@@ -24,3 +26,6 @@ Seeds 7, 42, 123; 40 planted errors per seed. Written by `python -m eval.run`.
 | agent | 7 | 15/40 | 15 | 15 | 12/15 |
 | rules | 123 | 32/40 | 32 | 32 | 24/24 |
 | agent | 123 | 30/40 | 34 | 30 | 26/30 |
+| rules+agent | 42 | 32/40 | 32 | 32 | 24/24 |
+| rules+agent | 7 | 32/40 | 32 | 32 | 24/24 |
+| rules+agent | 123 | 32/40 | 32 | 32 | 24/24 |
