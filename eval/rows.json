@@ -2,7 +2,7 @@
   {
     "approach": "rules",
     "seed": 42,
-    "seconds": 0.026678459020331502,
+    "seconds": 0.025286041025537997,
     "tokens": 0,
     "errors": 40,
     "found": 32,
@@ -27,36 +27,13 @@
   {
     "approach": "agent",
     "seed": 42,
-    "seconds": 109.48934991698479,
-    "tokens": 1060395,
+    "seconds": 138.54489025002113,
+    "tokens": 848157,
     "errors": 40,
-    "found": 8,
-    "flags": 9,
-    "correct_flags": 8,
-    "fixes_needed": 8,
-    "fixes_correct": 7,
-    "errors_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 8,
-      "wrong_period": 8,
-      "unapproved_vendor": 8
-    },
-    "found_by_type": {
-      "duplicate_payment": 3,
-      "transposed_amount": 5
-    }
-  },
-  {
-    "approach": "rules",
-    "seed": 7,
-    "seconds": 0.09192174999043345,
-    "tokens": 0,
-    "errors": 40,
-    "found": 32,
-    "flags": 32,
-    "correct_flags": 32,
-    "fixes_needed": 24,
+    "found": 31,
+    "flags": 31,
+    "correct_flags": 31,
+    "fixes_needed": 31,
     "fixes_correct": 24,
     "errors_by_type": {
       "duplicate_payment": 8,
@@ -68,88 +45,15 @@
     "found_by_type": {
       "duplicate_payment": 8,
       "missing_deposit": 8,
-      "transposed_amount": 8,
-      "unapproved_vendor": 8
-    }
-  },
-  {
-    "approach": "agent",
-    "seed": 7,
-    "seconds": 139.13432195800124,
-    "tokens": 1451576,
-    "errors": 40,
-    "found": 15,
-    "flags": 15,
-    "correct_flags": 15,
-    "fixes_needed": 15,
-    "fixes_correct": 12,
-    "errors_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 8,
-      "wrong_period": 8,
-      "unapproved_vendor": 8
-    },
-    "found_by_type": {
-      "duplicate_payment": 8,
-      "transposed_amount": 7
-    }
-  },
-  {
-    "approach": "rules",
-    "seed": 123,
-    "seconds": 0.053132666973397136,
-    "tokens": 0,
-    "errors": 40,
-    "found": 32,
-    "flags": 32,
-    "correct_flags": 32,
-    "fixes_needed": 24,
-    "fixes_correct": 24,
-    "errors_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 8,
-      "wrong_period": 8,
-      "unapproved_vendor": 8
-    },
-    "found_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 8,
-      "unapproved_vendor": 8
-    }
-  },
-  {
-    "approach": "agent",
-    "seed": 123,
-    "seconds": 532.7695325000095,
-    "tokens": 3709562,
-    "errors": 40,
-    "found": 30,
-    "flags": 34,
-    "correct_flags": 30,
-    "fixes_needed": 30,
-    "fixes_correct": 26,
-    "errors_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 8,
-      "wrong_period": 8,
-      "unapproved_vendor": 8
-    },
-    "found_by_type": {
-      "duplicate_payment": 8,
-      "missing_deposit": 8,
-      "transposed_amount": 6,
+      "transposed_amount": 7,
       "wrong_period": 8
     }
   },
   {
     "approach": "rules+agent",
     "seed": 42,
-    "seconds": 23.4451272499864,
-    "tokens": 49696,
+    "seconds": 29.975438707973808,
+    "tokens": 132681,
     "errors": 40,
     "found": 40,
     "flags": 40,
@@ -169,13 +73,61 @@
       "transposed_amount": 8,
       "wrong_period": 8,
       "unapproved_vendor": 8
+    }
+  },
+  {
+    "approach": "rules",
+    "seed": 7,
+    "seconds": 0.09917150001274422,
+    "tokens": 0,
+    "errors": 40,
+    "found": 32,
+    "flags": 32,
+    "correct_flags": 32,
+    "fixes_needed": 24,
+    "fixes_correct": 24,
+    "errors_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "wrong_period": 8,
+      "unapproved_vendor": 8
+    },
+    "found_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "unapproved_vendor": 8
+    }
+  },
+  {
+    "approach": "agent",
+    "seed": 7,
+    "seconds": 81.66629749996355,
+    "tokens": 644216,
+    "errors": 40,
+    "found": 14,
+    "flags": 14,
+    "correct_flags": 14,
+    "fixes_needed": 14,
+    "fixes_correct": 13,
+    "errors_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "wrong_period": 8,
+      "unapproved_vendor": 8
+    },
+    "found_by_type": {
+      "duplicate_payment": 8,
+      "transposed_amount": 6
     }
   },
   {
     "approach": "rules+agent",
     "seed": 7,
-    "seconds": 14.986859458032995,
-    "tokens": 42459,
+    "seconds": 10.469794208998792,
+    "tokens": 31963,
     "errors": 40,
     "found": 40,
     "flags": 40,
@@ -198,10 +150,58 @@
     }
   },
   {
+    "approach": "rules",
+    "seed": 123,
+    "seconds": 0.038163374993018806,
+    "tokens": 0,
+    "errors": 40,
+    "found": 32,
+    "flags": 32,
+    "correct_flags": 32,
+    "fixes_needed": 24,
+    "fixes_correct": 24,
+    "errors_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "wrong_period": 8,
+      "unapproved_vendor": 8
+    },
+    "found_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "unapproved_vendor": 8
+    }
+  },
+  {
+    "approach": "agent",
+    "seed": 123,
+    "seconds": 91.9043397079804,
+    "tokens": 717373,
+    "errors": 40,
+    "found": 12,
+    "flags": 15,
+    "correct_flags": 13,
+    "fixes_needed": 8,
+    "fixes_correct": 8,
+    "errors_by_type": {
+      "duplicate_payment": 8,
+      "missing_deposit": 8,
+      "transposed_amount": 8,
+      "wrong_period": 8,
+      "unapproved_vendor": 8
+    },
+    "found_by_type": {
+      "duplicate_payment": 8,
+      "unapproved_vendor": 4
+    }
+  },
+  {
     "approach": "rules+agent",
     "seed": 123,
-    "seconds": 26.343213292013388,
-    "tokens": 138486,
+    "seconds": 14.683379166992381,
+    "tokens": 50137,
     "errors": 40,
     "found": 40,
     "flags": 40,
