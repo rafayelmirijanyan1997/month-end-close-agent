@@ -77,12 +77,23 @@ def make_tools(wp, db_path):
 
     @tool
     def query_ledger(sql: str) -> dict:
-        """Run one read-only SQL SELECT on the books. Returns at most 50 rows and whether it cut any off."""
+        """Run one read-only SQL SELECT on the books. Returns at most 50 rows and whether any were cut off.
+
+        Ask targeted questions (filter by entry_id, amount or vendor) or aggregate ones (COUNT, SUM,
+        GROUP BY). Do not page through a table in chunks: that wastes turns, and match_bank_to_gl has
+        already compared every bank line with the ledger.
+        """
         return tools.query_ledger(sql, db_path=db_path)
 
     @tool
     def match_bank_to_gl() -> dict:
-        """Match bank lines to ledger cash lines by amount within 5 days. Returns what is left unmatched."""
+        """Compare every bank line with every ledger cash line and return what has no partner.
+
+        Two lines are partners if they have the same amount and the bank date is 0 to 5 days after the
+        ledger date; each line is used at most once. So an unmatched line has no line of the same amount
+        within that window anywhere in the books: you do not need to search the ledger to confirm it.
+        Look closer only at what could explain it, such as a nearby line with a different amount.
+        """
         result = tools.match_bank_to_gl(db_path=db_path)
         late = result.pop("possibly_outstanding_gl")
         result["possibly_outstanding_gl"] = {
