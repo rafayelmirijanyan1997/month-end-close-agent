@@ -4,7 +4,9 @@ python -m close.agent
 """
 
 import json
+import re
 import threading
+from collections import Counter
 from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -27,6 +29,25 @@ CUT_OFF_NOTE = (
 
 
 KEEP_RECENT = 8  # older ones are shortened
+
+
+SAME_SHAPE_LIMIT = (
+    3  # repeats of one query shape before the agent is told it looks like paging
+)
+PAGING_NOTE = (
+    "You have now run this query several times with only its values changed, which looks like paging "
+    "through a table. That wastes turns: match_bank_to_gl has already compared every bank line with the "
+    "ledger. To check particular items, query them together, for example WHERE debit_cents IN (...)."
+)
+
+
+def query_shape(sql):
+    """The query with its values blanked out, so successive pages of one table look identical."""
+    sql = re.sub(r"'[^']*'", "?", sql)
+    sql = re.sub(r"\b\d+\b", "?", sql)
+    return " ".join(sql.lower().split())
+
+
 RUNS_DIR = Path("runs")
 
 SYSTEM_PROMPT = """You are a senior accountant doing the October 2026 month-end close for a small company.
@@ -73,6 +94,7 @@ def make_tools(wp, db_path):
     lock = (
         threading.Lock()
     )  # several tool calls can run at once; only one may write to the workpaper
+    shapes = Counter()  # how often each query shape has been run in this close
 
     @tool
     def query_ledger(sql: str) -> dict:
@@ -82,7 +104,12 @@ def make_tools(wp, db_path):
         GROUP BY). Do not page through a table in chunks: that wastes turns, and match_bank_to_gl has
         already compared every bank line with the ledger.
         """
-        return tools.query_ledger(sql, db_path=db_path)
+        result = tools.query_ledger(sql, db_path=db_path)
+        with lock:
+            shapes[query_shape(sql)] += 1
+            if shapes[query_shape(sql)] >= SAME_SHAPE_LIMIT:
+                result["note"] = PAGING_NOTE
+        return result
 
     @tool
     def match_bank_to_gl() -> dict:

@@ -228,3 +228,32 @@ def test_a_bad_fix_still_records_the_error_and_says_how_to_correct_it(db):
     wp = run_agent(db_path=db, llm=model)
     assert len(wp.flags) == 1 and wp.drafts == []
     assert "does not balance" in model.seen[-1][-1].content
+
+
+def test_paging_queries_have_the_same_shape():
+    from close.agent import query_shape
+
+    page_1 = "SELECT * FROM gl WHERE debit_cents > 0 AND entry_id > 'JE00160' ORDER BY entry_id"
+    page_2 = "SELECT * FROM gl WHERE debit_cents > 0 AND entry_id > 'JE00334'  ORDER BY entry_id"
+    assert query_shape(page_1) == query_shape(page_2)
+    assert query_shape(page_1) != query_shape("SELECT COUNT(*) FROM gl")
+
+
+def test_the_agent_is_told_when_it_pages_through_a_table(db):
+    pages = [
+        call(
+            "query_ledger",
+            {"sql": f"SELECT * FROM accounts WHERE account_id > {n}"},
+            f"c{n}",
+        )
+        for n in (0, 1000, 2000)
+    ]
+    model = ScriptedModel(
+        replies=[AIMessage(content="", tool_calls=[p]) for p in pages]
+        + [AIMessage(content="Done.")]
+    )
+    run_agent(db_path=db, llm=model)
+    results = [m.content for m in model.seen[-1] if isinstance(m, ToolMessage)]
+    assert (
+        "paging" not in results[1] and "paging" in results[2]
+    )  # the third page gets the note
