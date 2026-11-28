@@ -218,11 +218,30 @@ class State(MessagesState):
     steps: int
 
 
-def build_graph(llm, tool_list, max_steps):
+def progress_note(wp, steps, max_steps):
+    """A short status the code keeps for the model: what is already recorded, and turns left."""
+    recorded = {}
+    for f in wp.flags:
+        recorded.setdefault(f["type"], []).append(f["entry_id"] or f["bank_id"])
+    lines = [f"Progress: this is turn {steps + 1} of {max_steps}."]
+    if recorded:
+        lines.append(
+            f"Errors already recorded ({len(wp.flags)}); they need no more work:"
+        )
+        lines += [f"- {kind}: {', '.join(ids)}" for kind, ids in recorded.items()]
+    else:
+        lines.append(
+            "No errors recorded yet. Record each one as soon as you have the evidence."
+        )
+    return "\n".join(lines)
+
+
+def build_graph(llm, tool_list, max_steps, wp):
     model = llm.bind_tools(tool_list)
 
     def think(state):
-        reply = model.invoke(compact(state["messages"]))
+        note = HumanMessage(progress_note(wp, state["steps"], max_steps))
+        reply = model.invoke(compact(state["messages"]) + [note])
         update = {"messages": [reply], "steps": state["steps"] + 1}
         cut_off = (
             reply.response_metadata.get("finish_reason") == "length"
@@ -298,7 +317,8 @@ def run_agent(db_path=DB_PATH, llm=None, max_steps=MAX_STEPS):
 
         llm = make_llm()
     wp = Workpaper(db_path=db_path)
-    graph = build_graph(llm, make_tools(wp, db_path), max_steps)
+    graph = build_graph(llm, make_tools(wp, db_path), max_steps, wp)
+
     messages = [
         SystemMessage(SYSTEM_PROMPT.format(max_steps=max_steps)),
         HumanMessage("Please do the October 2026 close."),

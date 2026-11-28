@@ -102,7 +102,8 @@ def test_tool_errors_go_back_to_the_model_as_feedback(db):
         ]
     )
     wp = run_agent(db_path=db, llm=model)
-    feedback = model.seen[-1][-1]
+    feedback = model.seen[-1][-2]  # [-1] is the progress note
+
     assert (
         isinstance(feedback, ToolMessage)
         and "JE999 is not in the gl table" in feedback.content
@@ -154,7 +155,8 @@ def test_a_reply_that_is_cut_off_is_retried_not_treated_as_finished(db):
     )
     run_agent(db_path=db, llm=model)
     assert len(model.seen) == 2  # it was given a second turn
-    note = model.seen[1][-1]
+    note = model.seen[1][-2]  # [-1] is the progress note
+
     assert isinstance(note, HumanMessage) and "cut off" in note.content
 
 
@@ -227,7 +229,7 @@ def test_a_bad_fix_still_records_the_error_and_says_how_to_correct_it(db):
     )
     wp = run_agent(db_path=db, llm=model)
     assert len(wp.flags) == 1 and wp.drafts == []
-    assert "does not balance" in model.seen[-1][-1].content
+    assert "does not balance" in model.seen[-1][-2].content
 
 
 def test_paging_queries_have_the_same_shape():
@@ -257,3 +259,34 @@ def test_the_agent_is_told_when_it_pages_through_a_table(db):
     assert (
         "paging" not in results[1] and "paging" in results[2]
     )  # the third page gets the note
+
+
+def test_each_turn_ends_with_a_progress_note(db):
+    fix = [
+        {"account_id": 1000, "debit_cents": 88800},
+        {"account_id": 6200, "credit_cents": 88800},
+    ]
+    model = ScriptedModel(
+        replies=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    call(
+                        "flag_exception",
+                        {
+                            "error_type": "missing_deposit",
+                            "reason": "r",
+                            "bank_id": "B3",
+                            "fix_lines": fix,
+                        },
+                        "c1",
+                    )
+                ],
+            ),
+            AIMessage(content="Done."),
+        ]
+    )
+    run_agent(db_path=db, llm=model, max_steps=5)
+    first, second = model.seen[0][-1].content, model.seen[1][-1].content
+    assert "turn 1 of 5" in first and "No errors recorded yet" in first
+    assert "turn 2 of 5" in second and "missing_deposit: B3" in second
